@@ -1,17 +1,26 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 
-const W = 400;
-const H = 600;
-const PAD_W = 70;
-const PAD_H = 12;
-const BALL_SIZE = 10;
+const FIELD_W = 440;
+const FIELD_H = 320;
+const SLIDER_H = 40;
+const CANVAS_W = FIELD_W;
+const CANVAS_H = FIELD_H + SLIDER_H;
+const PAD_W = 60;
+const PAD_H = 10;
+const BALL_R = 5;
 const WIN_SCORE = 5;
 const PAD_SPEED = 6;
-const BALL_SPEED_INIT = 3;
-const BALL_SPEED_INC = 0.3;
+const BALL_SPEED_INIT = 2.5;
+const BALL_SPEED_INC = 0.25;
 const AI_SPEED = 3.0;
 const HS_KEY = "tennis_highscore";
+
+const FIELD_TOP = 20;
+const FIELD_BOT = FIELD_H - 20;
+const FIELD_LEFT = 20;
+const FIELD_RIGHT = FIELD_W - 20;
+const FIELD_MID_Y = FIELD_H / 2;
 
 function loadHighScore() {
   try {
@@ -27,19 +36,89 @@ function saveHighScore(name, score) {
 
 function initState() {
   return {
-    p1: { x: W / 2 - PAD_W / 2, score: 0 },
-    p2: { x: W / 2 - PAD_W / 2, score: 0 },
-    ball: { x: W / 2, y: H / 2, vx: 0, vy: -BALL_SPEED_INIT },
+    p1: { x: FIELD_W / 2 - PAD_W / 2, score: 0 },
+    p2: { x: FIELD_W / 2 - PAD_W / 2, score: 0 },
+    ball: { x: FIELD_W / 2, y: FIELD_MID_Y, vx: 0, vy: -BALL_SPEED_INIT },
     speed: BALL_SPEED_INIT,
     rally: 0,
-    lastHit: null,
   };
 }
 
 function resetBall(s, dir) {
-  s.ball = { x: W / 2, y: H / 2, vx: 0, vy: dir * BALL_SPEED_INIT };
+  s.ball = { x: FIELD_W / 2, y: FIELD_MID_Y, vx: 0, vy: dir * BALL_SPEED_INIT };
   s.speed = BALL_SPEED_INIT;
   s.rally = 0;
+}
+
+function drawCourt(ctx) {
+  // outer area
+  ctx.fillStyle = "#1a4d2e";
+  ctx.fillRect(0, 0, FIELD_W, FIELD_H);
+
+  // court surface
+  ctx.fillStyle = "#2d8a4e";
+  ctx.fillRect(FIELD_LEFT, FIELD_TOP, FIELD_RIGHT - FIELD_LEFT, FIELD_BOT - FIELD_TOP);
+
+  // baseline
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(FIELD_LEFT, FIELD_TOP, FIELD_RIGHT - FIELD_LEFT, FIELD_BOT - FIELD_TOP);
+
+  // service lines
+  const serviceDist = 60;
+  ctx.strokeRect(FIELD_LEFT, FIELD_TOP + serviceDist, FIELD_RIGHT - FIELD_LEFT, serviceDist);
+  ctx.strokeRect(FIELD_LEFT, FIELD_BOT - serviceDist * 2, FIELD_RIGHT - FIELD_LEFT, serviceDist);
+
+  // center service line
+  ctx.beginPath();
+  ctx.moveTo(FIELD_W / 2, FIELD_TOP + serviceDist);
+  ctx.lineTo(FIELD_W / 2, FIELD_TOP + serviceDist * 2);
+  ctx.stroke();
+
+  // center mark
+  ctx.beginPath();
+  ctx.moveTo(FIELD_W / 2, FIELD_TOP);
+  ctx.lineTo(FIELD_W / 2, FIELD_TOP + 8);
+  ctx.moveTo(FIELD_W / 2, FIELD_BOT);
+  ctx.lineTo(FIELD_W / 2, FIELD_BOT - 8);
+  ctx.stroke();
+
+  // net
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(FIELD_LEFT, FIELD_MID_Y - 1, FIELD_RIGHT - FIELD_LEFT, 2);
+  // net mesh
+  ctx.strokeStyle = "rgba(255,255,255,0.3)";
+  ctx.lineWidth = 0.5;
+  for (let x = FIELD_LEFT; x <= FIELD_RIGHT; x += 12) {
+    ctx.beginPath();
+    ctx.moveTo(x, FIELD_MID_Y - 6);
+    ctx.lineTo(x, FIELD_MID_Y + 6);
+    ctx.stroke();
+  }
+}
+
+function drawSlider(ctx, paddleX) {
+  const sliderY = FIELD_H;
+  const sliderMidY = sliderY + SLIDER_H / 2;
+
+  ctx.fillStyle = "#0f1923";
+  ctx.fillRect(0, sliderY, FIELD_W, SLIDER_H);
+
+  // track
+  ctx.fillStyle = "#1a3a35";
+  ctx.fillRect(FIELD_LEFT, sliderMidY - 4, FIELD_RIGHT - FIELD_LEFT, 8);
+
+  // paddle indicator
+  const indicatorX = paddleX + PAD_W / 2;
+  ctx.fillStyle = "#ffd166";
+  ctx.beginPath();
+  ctx.arc(indicatorX, sliderMidY, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  // borders
+  ctx.strokeStyle = "#00897b";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(FIELD_LEFT, sliderMidY - 14, FIELD_RIGHT - FIELD_LEFT, 28);
 }
 
 export default function Tennis() {
@@ -57,68 +136,60 @@ export default function Tennis() {
   const overRef = useRef(false);
   const modeRef = useRef(null);
   const animRef = useRef(null);
-  const touchStartRef = useRef(null);
   const hitFlashRef = useRef(0);
+  const sliderDragging = useRef(false);
 
   const draw = useCallback(() => {
     const ctx = canvasRef.current?.getContext("2d");
     const s = stateRef.current;
     if (!ctx || !s) return;
 
-    ctx.fillStyle = "#0a1210";
-    ctx.fillRect(0, 0, W, H);
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
-    // Net posts
-    ctx.fillStyle = "#333";
-    ctx.fillRect(0, H / 2 - 3, W, 6);
-    ctx.fillStyle = "#00897b";
-    ctx.fillRect(0, H / 2 - 2, W, 4);
+    drawCourt(ctx);
 
-    // Net mesh lines
-    ctx.strokeStyle = "rgba(0,137,123,0.3)";
-    ctx.lineWidth = 1;
-    for (let y = H / 2 - 20; y <= H / 2 + 20; y += 8) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(W, y);
-      ctx.stroke();
-    }
-
-    // Paddles with hit flash
+    // paddles
     const p1Flash = hitFlashRef.current > 0;
     if (p1Flash) hitFlashRef.current--;
 
     ctx.fillStyle = p1Flash ? "#ffd166" : "#00897b";
     ctx.shadowColor = p1Flash ? "#ffd166" : "transparent";
-    ctx.shadowBlur = p1Flash ? 12 : 0;
-    ctx.fillRect(s.p1.x, H - 20 - PAD_H, PAD_W, PAD_H);
+    ctx.shadowBlur = p1Flash ? 14 : 0;
+    ctx.fillRect(s.p1.x, FIELD_BOT - PAD_H - 4, PAD_W, PAD_H);
     ctx.shadowBlur = 0;
 
     ctx.fillStyle = "#00897b";
-    ctx.fillRect(s.p2.x, 20, PAD_W, PAD_H);
+    ctx.fillRect(s.p2.x, FIELD_TOP + 4, PAD_W, PAD_H);
 
+    // ball
     ctx.fillStyle = "#ffd166";
     ctx.beginPath();
-    ctx.arc(s.ball.x, s.ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
+    ctx.arc(s.ball.x, s.ball.y, BALL_R, 0, Math.PI * 2);
     ctx.fill();
 
+    // scores
     ctx.textAlign = "center";
-    ctx.font = "bold 36px sans-serif";
-    ctx.fillStyle = "#6b8f8a";
-    ctx.fillText(s.p2.score, W / 2, 60);
-    ctx.fillText(s.p1.score, W / 2, H - 35);
+    ctx.font = "bold 28px sans-serif";
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.fillText(s.p2.score, FIELD_W / 2 + 1, FIELD_TOP + 41);
+    ctx.fillText(s.p1.score, FIELD_W / 2 + 1, FIELD_BOT - 31);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(s.p2.score, FIELD_W / 2, FIELD_TOP + 40);
+    ctx.fillText(s.p1.score, FIELD_W / 2, FIELD_BOT - 32);
 
-    ctx.font = "14px sans-serif";
-    ctx.fillStyle = "#333";
-    ctx.fillText(modeRef.current === "ai" ? "KI" : "Spieler 2", W / 2, 80);
-    ctx.fillText("Du", W / 2, H - 18);
+    ctx.font = "11px sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.fillText(modeRef.current === "ai" ? "KI" : "Spieler 2", FIELD_W / 2, FIELD_TOP + 56);
+    ctx.fillText("Du", FIELD_W / 2, FIELD_BOT - 46);
+
+    drawSlider(ctx, s.p1.x);
 
     if (pausedRef.current) {
       ctx.fillStyle = "rgba(10,18,16,0.75)";
-      ctx.fillRect(0, 0, W, H);
+      ctx.fillRect(0, 0, FIELD_W, FIELD_H);
       ctx.fillStyle = "#ffd166";
       ctx.font = "bold 28px sans-serif";
-      ctx.fillText("PAUSE", W / 2, H / 2);
+      ctx.fillText("PAUSE", FIELD_W / 2, FIELD_H / 2);
     }
   }, []);
 
@@ -127,8 +198,8 @@ export default function Tennis() {
     if (!s || pausedRef.current || overRef.current) return;
 
     const keys = keysRef.current;
-    if (keys["ArrowLeft"]) s.p1.x = Math.max(0, s.p1.x - PAD_SPEED);
-    if (keys["ArrowRight"]) s.p1.x = Math.min(W - PAD_W, s.p1.x + PAD_SPEED);
+    if (keys["ArrowLeft"]) s.p1.x = Math.max(FIELD_LEFT, s.p1.x - PAD_SPEED);
+    if (keys["ArrowRight"]) s.p1.x = Math.min(FIELD_RIGHT - PAD_W, s.p1.x + PAD_SPEED);
 
     if (modeRef.current === "ai") {
       const target = s.ball.x - PAD_W / 2;
@@ -137,58 +208,56 @@ export default function Tennis() {
         s.p2.x += Math.sign(diff) * Math.min(AI_SPEED, Math.abs(diff));
       }
     } else {
-      if (keys["a"] || keys["A"]) s.p2.x = Math.max(0, s.p2.x - PAD_SPEED);
-      if (keys["d"] || keys["D"]) s.p2.x = Math.min(W - PAD_W, s.p2.x + PAD_SPEED);
+      if (keys["a"] || keys["A"]) s.p2.x = Math.max(FIELD_LEFT, s.p2.x - PAD_SPEED);
+      if (keys["d"] || keys["D"]) s.p2.x = Math.min(FIELD_RIGHT - PAD_W, s.p2.x + PAD_SPEED);
     }
 
     const b = s.ball;
     b.x += b.vx;
     b.y += b.vy;
 
-    if (b.x <= 0 || b.x >= W) {
+    if (b.x <= FIELD_LEFT + BALL_R || b.x >= FIELD_RIGHT - BALL_R) {
       b.vx *= -1;
-      b.x = Math.max(0, Math.min(W, b.x));
+      b.x = Math.max(FIELD_LEFT + BALL_R, Math.min(FIELD_RIGHT - BALL_R, b.x));
     }
 
-    const p1y = H - 20 - PAD_H;
-    const p2y = 20;
+    const p1y = FIELD_BOT - PAD_H - 4;
+    const p2y = FIELD_TOP + 4;
 
     if (
       b.vy > 0 &&
-      b.y + BALL_SIZE / 2 >= p1y &&
-      b.y + BALL_SIZE / 2 <= p1y + PAD_H + 10 &&
+      b.y + BALL_R >= p1y &&
+      b.y + BALL_R <= p1y + PAD_H + 8 &&
       b.x >= s.p1.x &&
       b.x <= s.p1.x + PAD_W
     ) {
       const hitPos = (b.x - s.p1.x) / PAD_W;
       const angle = (hitPos - 0.5) * (Math.PI / 3);
-      s.speed = Math.min(12, s.speed + BALL_SPEED_INC);
+      s.speed = Math.min(8, s.speed + BALL_SPEED_INC);
       b.vy = -Math.abs(Math.cos(angle) * s.speed);
       b.vx = Math.sin(angle) * s.speed;
-      b.y = p1y - BALL_SIZE / 2;
+      b.y = p1y - BALL_R;
       s.rally++;
-      s.lastHit = 1;
-      hitFlashRef.current = 8;
+      hitFlashRef.current = 6;
     }
 
     if (
       b.vy < 0 &&
-      b.y - BALL_SIZE / 2 <= p2y + PAD_H &&
-      b.y - BALL_SIZE / 2 >= p2y - 10 &&
+      b.y - BALL_R <= p2y + PAD_H &&
+      b.y - BALL_R >= p2y - 8 &&
       b.x >= s.p2.x &&
       b.x <= s.p2.x + PAD_W
     ) {
       const hitPos = (b.x - s.p2.x) / PAD_W;
       const angle = (hitPos - 0.5) * (Math.PI / 3);
-      s.speed = Math.min(12, s.speed + BALL_SPEED_INC);
+      s.speed = Math.min(8, s.speed + BALL_SPEED_INC);
       b.vy = Math.abs(Math.cos(angle) * s.speed);
       b.vx = Math.sin(angle) * s.speed;
-      b.y = p2y + PAD_H + BALL_SIZE / 2;
+      b.y = p2y + PAD_H + BALL_R;
       s.rally++;
-      s.lastHit = 2;
     }
 
-    if (b.y > H + 20) {
+    if (b.y > FIELD_H + 10) {
       s.p2.score++;
       setScore([s.p1.score, s.p2.score]);
       if (s.p2.score >= WIN_SCORE) {
@@ -200,7 +269,7 @@ export default function Tennis() {
       resetBall(s, -1);
     }
 
-    if (b.y < -20) {
+    if (b.y < -10) {
       s.p1.score++;
       setScore([s.p1.score, s.p2.score]);
       if (s.p1.score >= WIN_SCORE) {
@@ -274,29 +343,64 @@ export default function Tennis() {
     setPlayerName("");
   }
 
+  function getCanvasPos(e) {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scaleX = CANVAS_W / rect.width;
+    const scaleY = CANVAS_H / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  }
+
+  function moveP1To(canvasX) {
+    const s = stateRef.current;
+    if (!s) return;
+    s.p1.x = Math.max(FIELD_LEFT, Math.min(FIELD_RIGHT - PAD_W, canvasX - PAD_W / 2));
+  }
+
   function onTouchStart(e) {
     e.preventDefault();
     if (overRef.current || pausedRef.current) return;
-    const t = e.touches[0];
-    touchStartRef.current = { x: t.clientX, y: t.clientY };
+    const pos = getCanvasPos(e.touches[0]);
+    if (pos.y >= FIELD_H) {
+      sliderDragging.current = true;
+      moveP1To(pos.x);
+    }
   }
 
   function onTouchMove(e) {
     e.preventDefault();
-    if (!touchStartRef.current) return;
-    const s = stateRef.current;
-    if (!s) return;
-    const t = e.touches[0];
-    const dx = t.clientX - touchStartRef.current.x;
-    if (Math.abs(dx) >= 4) {
-      s.p1.x = Math.max(0, Math.min(W - PAD_W, s.p1.x + dx));
-      touchStartRef.current.x = t.clientX;
+    if (overRef.current || pausedRef.current) return;
+    if (sliderDragging.current) {
+      const pos = getCanvasPos(e.touches[0]);
+      moveP1To(pos.x);
     }
   }
 
   function onTouchEnd(e) {
     e.preventDefault();
-    touchStartRef.current = null;
+    sliderDragging.current = false;
+  }
+
+  function onMouseDown(e) {
+    if (overRef.current || pausedRef.current) return;
+    const pos = getCanvasPos(e);
+    if (pos.y >= FIELD_H) {
+      sliderDragging.current = true;
+      moveP1To(pos.x);
+    }
+  }
+
+  function onMouseMove(e) {
+    if (!sliderDragging.current) return;
+    if (overRef.current || pausedRef.current) return;
+    const pos = getCanvasPos(e);
+    moveP1To(pos.x);
+  }
+
+  function onMouseUp() {
+    sliderDragging.current = false;
   }
 
   useEffect(() => {
@@ -352,7 +456,7 @@ export default function Tennis() {
         </div>
         <div style={{ marginTop: "1.5rem", color: "#6b8f8a", fontSize: "0.85rem" }}>
           <p><strong>Keyboard:</strong> ←/→ oder A/D</p>
-          <p><strong>Touch:</strong> Finger auf dem Canvas nach links/rechts wischen</p>
+          <p><strong>Touch:</strong> Schieberegler unten</p>
         </div>
         <Link
           to="/"
@@ -376,12 +480,16 @@ export default function Tennis() {
       <h1 style={{ marginBottom: "1rem" }}>Tennis</h1>
       <canvas
         ref={canvasRef}
-        width={W}
-        height={H}
+        width={CANVAS_W}
+        height={CANVAS_H}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        style={{ border: "2px solid #00897b", borderRadius: 6, touchAction: "none" }}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        style={{ border: "2px solid #00897b", borderRadius: 6, touchAction: "none", maxWidth: "100%" }}
       />
       {over && (
         <div style={{ marginTop: "1rem" }}>
@@ -426,7 +534,7 @@ export default function Tennis() {
         </div>
       )}
       <p style={{ marginTop: "0.75rem", color: "#666", fontSize: "0.85rem" }}>
-        ←/→: bewegen &middot; P/Esc: Pause &middot; Touch: wischen
+        ←/→: bewegen &middot; P/Esc: Pause &middot; Slider: ziehen
       </p>
       <Link
         to="/"
