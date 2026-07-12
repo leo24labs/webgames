@@ -10,10 +10,10 @@ const PAD_W = 60;
 const PAD_H = 10;
 const BALL_R = 5;
 const WIN_SCORE = 5;
-const PAD_SPEED = 6;
-const BALL_SPEED_INIT = 1.8;
-const BALL_SPEED_INC = 0.2;
-const AI_SPEED = 3.0;
+const PAD_SPEED = 12;
+const BALL_SPEED_INIT = 2.5;
+const BALL_SPEED_INC = 0.5;
+const AI_SPEED = 3.5;
 const HS_KEY = "tennis_highscore";
 
 const FIELD_TOP = 20;
@@ -242,7 +242,7 @@ export default function Tennis() {
     ) {
       const hitPos = (b.x - s.p1.x) / PAD_W;
       const angle = (hitPos - 0.5) * (Math.PI / 3);
-      s.speed = Math.min(8, s.speed + BALL_SPEED_INC);
+      s.speed = Math.min(10, s.speed + BALL_SPEED_INC);
       b.vy = -Math.abs(Math.cos(angle) * s.speed);
       b.vx = Math.sin(angle) * s.speed;
       b.y = p1y - BALL_R;
@@ -259,7 +259,7 @@ export default function Tennis() {
     ) {
       const hitPos = (b.x - s.p2.x) / PAD_W;
       const angle = (hitPos - 0.5) * (Math.PI / 3);
-      s.speed = Math.min(8, s.speed + BALL_SPEED_INC);
+      s.speed = Math.min(10, s.speed + BALL_SPEED_INC);
       b.vy = Math.abs(Math.cos(angle) * s.speed);
       b.vx = Math.sin(angle) * s.speed;
       b.y = p2y + PAD_H + BALL_R;
