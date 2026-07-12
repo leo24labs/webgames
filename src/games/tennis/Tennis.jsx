@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 
 const FIELD_W = 440;
-const FIELD_H = 320;
+const FIELD_H = 400;
 const SLIDER_H = 40;
 const CANVAS_W = FIELD_W;
 const CANVAS_H = FIELD_H + SLIDER_H;
@@ -11,8 +11,8 @@ const PAD_H = 10;
 const BALL_R = 5;
 const WIN_SCORE = 5;
 const PAD_SPEED = 6;
-const BALL_SPEED_INIT = 2.5;
-const BALL_SPEED_INC = 0.25;
+const BALL_SPEED_INIT = 1.8;
+const BALL_SPEED_INC = 0.2;
 const AI_SPEED = 3.0;
 const HS_KEY = "tennis_highscore";
 
@@ -451,11 +451,10 @@ export default function Tennis() {
           </p>
         )}
         <div>
-          <button onClick={() => startGame("ai")} style={btnStyle}>Vs KI</button>
-          <button onClick={() => startGame("2p")} style={btnStyle}>2 Spieler</button>
+          <button onClick={() => startGame("ai")} style={btnStyle}>Start</button>
         </div>
         <div style={{ marginTop: "1.5rem", color: "#6b8f8a", fontSize: "0.85rem" }}>
-          <p><strong>Keyboard:</strong> ←/→ oder A/D</p>
+          <p><strong>Keyboard:</strong> ←/→</p>
           <p><strong>Touch:</strong> Schieberegler unten</p>
         </div>
         <Link
@@ -528,9 +527,6 @@ export default function Tennis() {
           ) : (
             <button onClick={restart} style={btnStyle}>Nochmal</button>
           )}
-          <button onClick={() => { setMode(null); if (animRef.current) cancelAnimationFrame(animRef.current); }} style={{ ...btnStyle, background: "#162a2d", border: "2px solid #00897b" }}>
-            Modus wechseln
-          </button>
         </div>
       )}
       <p style={{ marginTop: "0.75rem", color: "#666", fontSize: "0.85rem" }}>
