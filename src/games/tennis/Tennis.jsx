@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 
 const FIELD_W = 440;
-const FIELD_H = 400;
+const FIELD_H = 600;
 const SLIDER_H = 40;
 const CANVAS_W = FIELD_W;
 const CANVAS_H = FIELD_H + SLIDER_H;
@@ -51,48 +51,57 @@ function resetBall(s, dir) {
 }
 
 function drawCourt(ctx) {
-  // outer area
-  ctx.fillStyle = "#1a4d2e";
+  // black background
+  ctx.fillStyle = "#0a1210";
   ctx.fillRect(0, 0, FIELD_W, FIELD_H);
 
-  // court surface
-  ctx.fillStyle = "#2d8a4e";
+  // court surface - dark green
+  ctx.fillStyle = "#1a3a2a";
   ctx.fillRect(FIELD_LEFT, FIELD_TOP, FIELD_RIGHT - FIELD_LEFT, FIELD_BOT - FIELD_TOP);
 
-  // baseline
   ctx.strokeStyle = "#fff";
   ctx.lineWidth = 2;
+
+  // outer boundary
   ctx.strokeRect(FIELD_LEFT, FIELD_TOP, FIELD_RIGHT - FIELD_LEFT, FIELD_BOT - FIELD_TOP);
 
   // service lines
-  const serviceDist = 60;
-  ctx.strokeRect(FIELD_LEFT, FIELD_TOP + serviceDist, FIELD_RIGHT - FIELD_LEFT, serviceDist);
-  ctx.strokeRect(FIELD_LEFT, FIELD_BOT - serviceDist * 2, FIELD_RIGHT - FIELD_LEFT, serviceDist);
+  const serviceH = 80;
+  ctx.beginPath();
+  ctx.moveTo(FIELD_LEFT, FIELD_TOP + serviceH);
+  ctx.lineTo(FIELD_RIGHT, FIELD_TOP + serviceH);
+  ctx.moveTo(FIELD_LEFT, FIELD_BOT - serviceH);
+  ctx.lineTo(FIELD_RIGHT, FIELD_BOT - serviceH);
+  ctx.stroke();
 
   // center service line
   ctx.beginPath();
-  ctx.moveTo(FIELD_W / 2, FIELD_TOP + serviceDist);
-  ctx.lineTo(FIELD_W / 2, FIELD_TOP + serviceDist * 2);
+  ctx.moveTo(FIELD_W / 2, FIELD_TOP + serviceH);
+  ctx.lineTo(FIELD_W / 2, FIELD_BOT - serviceH);
   ctx.stroke();
 
-  // center mark
+  // center marks
   ctx.beginPath();
   ctx.moveTo(FIELD_W / 2, FIELD_TOP);
-  ctx.lineTo(FIELD_W / 2, FIELD_TOP + 8);
+  ctx.lineTo(FIELD_W / 2, FIELD_TOP + 10);
   ctx.moveTo(FIELD_W / 2, FIELD_BOT);
-  ctx.lineTo(FIELD_W / 2, FIELD_BOT - 8);
+  ctx.lineTo(FIELD_W / 2, FIELD_BOT - 10);
   ctx.stroke();
 
   // net
   ctx.fillStyle = "#fff";
   ctx.fillRect(FIELD_LEFT, FIELD_MID_Y - 1, FIELD_RIGHT - FIELD_LEFT, 2);
+  // net posts
+  ctx.fillStyle = "#888";
+  ctx.fillRect(FIELD_LEFT - 3, FIELD_MID_Y - 8, 6, 16);
+  ctx.fillRect(FIELD_RIGHT - 3, FIELD_MID_Y - 8, 6, 16);
   // net mesh
-  ctx.strokeStyle = "rgba(255,255,255,0.3)";
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
   ctx.lineWidth = 0.5;
-  for (let x = FIELD_LEFT; x <= FIELD_RIGHT; x += 12) {
+  for (let x = FIELD_LEFT; x <= FIELD_RIGHT; x += 10) {
     ctx.beginPath();
-    ctx.moveTo(x, FIELD_MID_Y - 6);
-    ctx.lineTo(x, FIELD_MID_Y + 6);
+    ctx.moveTo(x, FIELD_MID_Y - 8);
+    ctx.lineTo(x, FIELD_MID_Y + 8);
     ctx.stroke();
   }
 }
