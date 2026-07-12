@@ -8,9 +8,9 @@ const PAD_H = 12;
 const BALL_SIZE = 10;
 const WIN_SCORE = 5;
 const PAD_SPEED = 6;
-const BALL_SPEED_INIT = 5;
-const BALL_SPEED_INC = 0.4;
-const AI_SPEED = 4.2;
+const BALL_SPEED_INIT = 3;
+const BALL_SPEED_INC = 0.3;
+const AI_SPEED = 3.0;
 const HS_KEY = "tennis_highscore";
 
 function loadHighScore() {
@@ -58,6 +58,7 @@ export default function Tennis() {
   const modeRef = useRef(null);
   const animRef = useRef(null);
   const touchStartRef = useRef(null);
+  const hitFlashRef = useRef(0);
 
   const draw = useCallback(() => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -67,18 +68,34 @@ export default function Tennis() {
     ctx.fillStyle = "#0a1210";
     ctx.fillRect(0, 0, W, H);
 
-    ctx.strokeStyle = "#1a3a35";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 8]);
-    ctx.beginPath();
-    ctx.moveTo(0, H / 2);
-    ctx.lineTo(W, H / 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    // Net posts
+    ctx.fillStyle = "#333";
+    ctx.fillRect(0, H / 2 - 3, W, 6);
+    ctx.fillStyle = "#00897b";
+    ctx.fillRect(0, H / 2 - 2, W, 4);
+
+    // Net mesh lines
+    ctx.strokeStyle = "rgba(0,137,123,0.3)";
+    ctx.lineWidth = 1;
+    for (let y = H / 2 - 20; y <= H / 2 + 20; y += 8) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+
+    // Paddles with hit flash
+    const p1Flash = hitFlashRef.current > 0;
+    if (p1Flash) hitFlashRef.current--;
+
+    ctx.fillStyle = p1Flash ? "#ffd166" : "#00897b";
+    ctx.shadowColor = p1Flash ? "#ffd166" : "transparent";
+    ctx.shadowBlur = p1Flash ? 12 : 0;
+    ctx.fillRect(s.p1.x, H - 20 - PAD_H, PAD_W, PAD_H);
+    ctx.shadowBlur = 0;
 
     ctx.fillStyle = "#00897b";
     ctx.fillRect(s.p2.x, 20, PAD_W, PAD_H);
-    ctx.fillRect(s.p1.x, H - 20 - PAD_H, PAD_W, PAD_H);
 
     ctx.fillStyle = "#ffd166";
     ctx.beginPath();
@@ -151,6 +168,7 @@ export default function Tennis() {
       b.y = p1y - BALL_SIZE / 2;
       s.rally++;
       s.lastHit = 1;
+      hitFlashRef.current = 8;
     }
 
     if (
