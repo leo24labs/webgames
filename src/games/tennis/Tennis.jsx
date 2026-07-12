@@ -1,26 +1,30 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 
-const FIELD_W = 440;
+const FIELD_W = 400;
 const FIELD_H = 600;
-const SLIDER_H = 40;
 const CANVAS_W = FIELD_W;
-const CANVAS_H = FIELD_H + SLIDER_H;
+const CANVAS_H = FIELD_H;
 const PAD_W = 60;
 const PAD_H = 10;
 const BALL_R = 5;
 const WIN_SCORE = 5;
-const PAD_SPEED = 12;
 const BALL_SPEED_INIT = 2.5;
 const BALL_SPEED_INC = 0.5;
 const AI_SPEED = 3.5;
+const DOT_OFFSET = 50;
+const DOT_R = 10;
 const HS_KEY = "tennis_highscore";
 
-const FIELD_TOP = 20;
-const FIELD_BOT = FIELD_H - 20;
-const FIELD_LEFT = 20;
-const FIELD_RIGHT = FIELD_W - 20;
+const FIELD_TOP = 30;
+const FIELD_BOT = FIELD_H - 30;
+const FIELD_LEFT = 30;
+const FIELD_RIGHT = FIELD_W - 30;
 const FIELD_MID_Y = FIELD_H / 2;
+const P1_BASE_Y = FIELD_BOT - PAD_H;
+const P2_BASE_Y = FIELD_TOP;
+const P1_MIN_Y = FIELD_MID_Y + 30;
+const P2_MAX_Y = FIELD_MID_Y - 30;
 
 function loadHighScore() {
   try {
@@ -36,36 +40,31 @@ function saveHighScore(name, score) {
 
 function initState() {
   return {
-    p1: { x: FIELD_W / 2 - PAD_W / 2, score: 0 },
-    p2: { x: FIELD_W / 2 - PAD_W / 2, score: 0 },
-    ball: { x: FIELD_W / 2, y: FIELD_MID_Y, vx: 0, vy: -BALL_SPEED_INIT },
+    p1: { x: FIELD_W / 2 - PAD_W / 2, y: P1_BASE_Y, score: 0 },
+    p2: { x: FIELD_W / 2 - PAD_W / 2, y: P2_BASE_Y, score: 0 },
+    ball: { x: FIELD_W / 2, y: FIELD_MID_Y - 20, vx: 1.5, vy: -BALL_SPEED_INIT },
     speed: BALL_SPEED_INIT,
     rally: 0,
   };
 }
 
 function resetBall(s, dir) {
-  s.ball = { x: FIELD_W / 2, y: FIELD_MID_Y, vx: 0, vy: dir * BALL_SPEED_INIT };
+  s.ball = { x: FIELD_W / 2, y: FIELD_MID_Y, vx: (Math.random() - 0.5) * 2, vy: dir * BALL_SPEED_INIT };
   s.speed = BALL_SPEED_INIT;
   s.rally = 0;
 }
 
 function drawCourt(ctx) {
-  // black background
   ctx.fillStyle = "#0a1210";
   ctx.fillRect(0, 0, FIELD_W, FIELD_H);
 
-  // court surface - dark green
   ctx.fillStyle = "#1a3a2a";
   ctx.fillRect(FIELD_LEFT, FIELD_TOP, FIELD_RIGHT - FIELD_LEFT, FIELD_BOT - FIELD_TOP);
 
   ctx.strokeStyle = "#fff";
   ctx.lineWidth = 2;
-
-  // outer boundary
   ctx.strokeRect(FIELD_LEFT, FIELD_TOP, FIELD_RIGHT - FIELD_LEFT, FIELD_BOT - FIELD_TOP);
 
-  // service lines
   const serviceH = 80;
   ctx.beginPath();
   ctx.moveTo(FIELD_LEFT, FIELD_TOP + serviceH);
@@ -74,13 +73,11 @@ function drawCourt(ctx) {
   ctx.lineTo(FIELD_RIGHT, FIELD_BOT - serviceH);
   ctx.stroke();
 
-  // center service line
   ctx.beginPath();
   ctx.moveTo(FIELD_W / 2, FIELD_TOP + serviceH);
   ctx.lineTo(FIELD_W / 2, FIELD_BOT - serviceH);
   ctx.stroke();
 
-  // center marks
   ctx.beginPath();
   ctx.moveTo(FIELD_W / 2, FIELD_TOP);
   ctx.lineTo(FIELD_W / 2, FIELD_TOP + 10);
@@ -88,46 +85,28 @@ function drawCourt(ctx) {
   ctx.lineTo(FIELD_W / 2, FIELD_BOT - 10);
   ctx.stroke();
 
-  // net
+  // net - clearly visible
   ctx.fillStyle = "#fff";
-  ctx.fillRect(FIELD_LEFT, FIELD_MID_Y - 1, FIELD_RIGHT - FIELD_LEFT, 2);
-  // net posts
-  ctx.fillStyle = "#888";
-  ctx.fillRect(FIELD_LEFT - 3, FIELD_MID_Y - 8, 6, 16);
-  ctx.fillRect(FIELD_RIGHT - 3, FIELD_MID_Y - 8, 6, 16);
+  ctx.fillRect(FIELD_LEFT - 4, FIELD_MID_Y - 2, FIELD_RIGHT - FIELD_LEFT + 8, 4);
   // net mesh
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
-  ctx.lineWidth = 0.5;
+  ctx.strokeStyle = "rgba(255,255,255,0.5)";
+  ctx.lineWidth = 1;
   for (let x = FIELD_LEFT; x <= FIELD_RIGHT; x += 10) {
     ctx.beginPath();
-    ctx.moveTo(x, FIELD_MID_Y - 8);
-    ctx.lineTo(x, FIELD_MID_Y + 8);
+    ctx.moveTo(x, FIELD_MID_Y - 12);
+    ctx.lineTo(x, FIELD_MID_Y + 12);
     ctx.stroke();
   }
-}
-
-function drawSlider(ctx, paddleX) {
-  const sliderY = FIELD_H;
-  const sliderMidY = sliderY + SLIDER_H / 2;
-
-  ctx.fillStyle = "#0f1923";
-  ctx.fillRect(0, sliderY, FIELD_W, SLIDER_H);
-
-  // track
-  ctx.fillStyle = "#1a3a35";
-  ctx.fillRect(FIELD_LEFT, sliderMidY - 4, FIELD_RIGHT - FIELD_LEFT, 8);
-
-  // paddle indicator
-  const indicatorX = paddleX + PAD_W / 2;
-  ctx.fillStyle = "#ffd166";
-  ctx.beginPath();
-  ctx.arc(indicatorX, sliderMidY, 8, 0, Math.PI * 2);
-  ctx.fill();
-
-  // borders
-  ctx.strokeStyle = "#00897b";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(FIELD_LEFT, sliderMidY - 14, FIELD_RIGHT - FIELD_LEFT, 28);
+  for (let y = FIELD_MID_Y - 12; y <= FIELD_MID_Y + 12; y += 6) {
+    ctx.beginPath();
+    ctx.moveTo(FIELD_LEFT, y);
+    ctx.lineTo(FIELD_RIGHT, y);
+    ctx.stroke();
+  }
+  // net posts
+  ctx.fillStyle = "#aaa";
+  ctx.fillRect(FIELD_LEFT - 6, FIELD_MID_Y - 14, 8, 28);
+  ctx.fillRect(FIELD_RIGHT - 2, FIELD_MID_Y - 14, 8, 28);
 }
 
 export default function Tennis() {
@@ -146,7 +125,7 @@ export default function Tennis() {
   const modeRef = useRef(null);
   const animRef = useRef(null);
   const hitFlashRef = useRef(0);
-  const sliderDragging = useRef(false);
+  const dotDragging = useRef(false);
 
   const draw = useCallback(() => {
     const ctx = canvasRef.current?.getContext("2d");
@@ -154,21 +133,33 @@ export default function Tennis() {
     if (!ctx || !s) return;
 
     ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-
     drawCourt(ctx);
 
-    // paddles
     const p1Flash = hitFlashRef.current > 0;
     if (p1Flash) hitFlashRef.current--;
 
+    // player paddle
     ctx.fillStyle = p1Flash ? "#ffd166" : "#00897b";
     ctx.shadowColor = p1Flash ? "#ffd166" : "transparent";
     ctx.shadowBlur = p1Flash ? 14 : 0;
-    ctx.fillRect(s.p1.x, FIELD_BOT - PAD_H - 4, PAD_W, PAD_H);
+    ctx.fillRect(s.p1.x, s.p1.y, PAD_W, PAD_H);
     ctx.shadowBlur = 0;
 
+    // control dot + line
+    ctx.strokeStyle = "rgba(255,209,102,0.4)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(s.p1.x + PAD_W / 2, s.p1.y + PAD_H);
+    ctx.lineTo(s.p1.x + PAD_W / 2, s.p1.y + PAD_H + DOT_OFFSET);
+    ctx.stroke();
+    ctx.fillStyle = "#ffd166";
+    ctx.beginPath();
+    ctx.arc(s.p1.x + PAD_W / 2, s.p1.y + PAD_H + DOT_OFFSET, DOT_R, 0, Math.PI * 2);
+    ctx.fill();
+
+    // AI paddle
     ctx.fillStyle = "#00897b";
-    ctx.fillRect(s.p2.x, FIELD_TOP + 4, PAD_W, PAD_H);
+    ctx.fillRect(s.p2.x, s.p2.y, PAD_W, PAD_H);
 
     // ball
     ctx.fillStyle = "#ffd166";
@@ -180,18 +171,16 @@ export default function Tennis() {
     ctx.textAlign = "center";
     ctx.font = "bold 28px sans-serif";
     ctx.fillStyle = "rgba(0,0,0,0.3)";
-    ctx.fillText(s.p2.score, FIELD_W / 2 + 1, FIELD_TOP + 41);
-    ctx.fillText(s.p1.score, FIELD_W / 2 + 1, FIELD_BOT - 31);
+    ctx.fillText(s.p2.score, FIELD_W / 2 + 1, FIELD_TOP + 51);
+    ctx.fillText(s.p1.score, FIELD_W / 2 + 1, FIELD_BOT - 39);
     ctx.fillStyle = "#fff";
-    ctx.fillText(s.p2.score, FIELD_W / 2, FIELD_TOP + 40);
-    ctx.fillText(s.p1.score, FIELD_W / 2, FIELD_BOT - 32);
+    ctx.fillText(s.p2.score, FIELD_W / 2, FIELD_TOP + 50);
+    ctx.fillText(s.p1.score, FIELD_W / 2, FIELD_BOT - 40);
 
     ctx.font = "11px sans-serif";
     ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.fillText(modeRef.current === "ai" ? "KI" : "Spieler 2", FIELD_W / 2, FIELD_TOP + 56);
-    ctx.fillText("Du", FIELD_W / 2, FIELD_BOT - 46);
-
-    drawSlider(ctx, s.p1.x);
+    ctx.fillText("KI", FIELD_W / 2, FIELD_TOP + 66);
+    ctx.fillText("Du", FIELD_W / 2, FIELD_BOT - 54);
 
     if (pausedRef.current) {
       ctx.fillStyle = "rgba(10,18,16,0.75)";
@@ -207,36 +196,92 @@ export default function Tennis() {
     if (!s || pausedRef.current || overRef.current) return;
 
     const keys = keysRef.current;
-    if (keys["ArrowLeft"]) s.p1.x = Math.max(FIELD_LEFT, s.p1.x - PAD_SPEED);
-    if (keys["ArrowRight"]) s.p1.x = Math.min(FIELD_RIGHT - PAD_W, s.p1.x + PAD_SPEED);
+    if (keys["ArrowLeft"]) s.p1.x = Math.max(FIELD_LEFT, s.p1.x - 8);
+    if (keys["ArrowRight"]) s.p1.x = Math.min(FIELD_RIGHT - PAD_W, s.p1.x + 8);
+    if (keys["ArrowUp"]) s.p1.y = Math.max(P1_MIN_Y, s.p1.y - 5);
+    if (keys["ArrowDown"]) s.p1.y = Math.min(P1_BASE_Y, s.p1.y + 5);
 
-    if (modeRef.current === "ai") {
-      const target = s.ball.x - PAD_W / 2;
-      const diff = target - s.p2.x;
-      if (Math.abs(diff) > 4) {
-        s.p2.x += Math.sign(diff) * Math.min(AI_SPEED, Math.abs(diff));
+    // AI
+    const target = s.ball.x - PAD_W / 2;
+    const diffX = target - s.p2.x;
+    if (Math.abs(diffX) > 4) {
+      s.p2.x += Math.sign(diffX) * Math.min(AI_SPEED, Math.abs(diffX));
+    }
+    if (s.ball.vy < 0) {
+      const targetY = Math.max(P2_MAX_Y, s.ball.y - 60);
+      const diffY = targetY - s.p2.y;
+      if (Math.abs(diffY) > 4) {
+        s.p2.y += Math.sign(diffY) * Math.min(AI_SPEED * 0.8, Math.abs(diffY));
       }
     } else {
-      if (keys["a"] || keys["A"]) s.p2.x = Math.max(FIELD_LEFT, s.p2.x - PAD_SPEED);
-      if (keys["d"] || keys["D"]) s.p2.x = Math.min(FIELD_RIGHT - PAD_W, s.p2.x + PAD_SPEED);
+      const diffY = P2_BASE_Y - s.p2.y;
+      if (Math.abs(diffY) > 4) {
+        s.p2.y += Math.sign(diffY) * Math.min(AI_SPEED * 0.6, Math.abs(diffY));
+      }
     }
 
     const b = s.ball;
     b.x += b.vx;
     b.y += b.vy;
 
-    if (b.x <= FIELD_LEFT + BALL_R || b.x >= FIELD_RIGHT - BALL_R) {
-      b.vx *= -1;
-      b.x = Math.max(FIELD_LEFT + BALL_R, Math.min(FIELD_RIGHT - BALL_R, b.x));
+    // side walls - no bounce, ball goes out
+    if (b.x < FIELD_LEFT - 15 || b.x > FIELD_RIGHT + 15) {
+      s.p2.score++;
+      setScore([s.p1.score, s.p2.score]);
+      if (s.p2.score >= WIN_SCORE) {
+        overRef.current = true;
+        setWinner("KI");
+        setOver(true);
+        return;
+      }
+      resetBall(s, -1);
+      draw();
+      return;
     }
 
-    const p1y = FIELD_BOT - PAD_H - 4;
-    const p2y = FIELD_TOP + 4;
+    // top/bottom bounce off baseline
+    if (b.y <= FIELD_TOP + BALL_R) {
+      s.p1.score++;
+      setScore([s.p1.score, s.p2.score]);
+      if (s.p1.score >= WIN_SCORE) {
+        overRef.current = true;
+        setWinner("Du");
+        setOver(true);
+        return;
+      }
+      resetBall(s, 1);
+      draw();
+      return;
+    }
+    if (b.y >= FIELD_BOT - BALL_R) {
+      s.p2.score++;
+      setScore([s.p1.score, s.p2.score]);
+      if (s.p2.score >= WIN_SCORE) {
+        overRef.current = true;
+        setWinner("KI");
+        setOver(true);
+        return;
+      }
+      resetBall(s, -1);
+      draw();
+      return;
+    }
 
+    // net collision
+    if (b.y >= FIELD_MID_Y - 2 && b.y <= FIELD_MID_Y + 2) {
+      if (b.x >= FIELD_LEFT && b.x <= FIELD_RIGHT) {
+        b.vy *= -0.3;
+        b.vx *= 0.8;
+        b.y = b.vy > 0 ? FIELD_MID_Y + 4 : FIELD_MID_Y - 4;
+      }
+    }
+
+    // player paddle hit
+    const p1y = s.p1.y;
     if (
       b.vy > 0 &&
       b.y + BALL_R >= p1y &&
-      b.y + BALL_R <= p1y + PAD_H + 8 &&
+      b.y + BALL_R <= p1y + PAD_H + 10 &&
       b.x >= s.p1.x &&
       b.x <= s.p1.x + PAD_W
     ) {
@@ -250,10 +295,12 @@ export default function Tennis() {
       hitFlashRef.current = 6;
     }
 
+    // AI paddle hit
+    const p2y = s.p2.y;
     if (
       b.vy < 0 &&
       b.y - BALL_R <= p2y + PAD_H &&
-      b.y - BALL_R >= p2y - 8 &&
+      b.y - BALL_R >= p2y - 10 &&
       b.x >= s.p2.x &&
       b.x <= s.p2.x + PAD_W
     ) {
@@ -264,30 +311,6 @@ export default function Tennis() {
       b.vx = Math.sin(angle) * s.speed;
       b.y = p2y + PAD_H + BALL_R;
       s.rally++;
-    }
-
-    if (b.y > FIELD_H + 10) {
-      s.p2.score++;
-      setScore([s.p1.score, s.p2.score]);
-      if (s.p2.score >= WIN_SCORE) {
-        overRef.current = true;
-        setWinner(modeRef.current === "ai" ? "KI" : "Spieler 2");
-        setOver(true);
-        return;
-      }
-      resetBall(s, -1);
-    }
-
-    if (b.y < -10) {
-      s.p1.score++;
-      setScore([s.p1.score, s.p2.score]);
-      if (s.p1.score >= WIN_SCORE) {
-        overRef.current = true;
-        setWinner("Du");
-        setOver(true);
-        return;
-      }
-      resetBall(s, 1);
     }
 
     draw();
@@ -310,7 +333,7 @@ export default function Tennis() {
     };
   }, [mode, tick, draw]);
 
-  function startGame(selectedMode) {
+  function startGame() {
     setScore([0, 0]);
     setOver(false);
     overRef.current = false;
@@ -318,8 +341,7 @@ export default function Tennis() {
     setNewRecord(false);
     setPlayerName("");
     pausedRef.current = false;
-    modeRef.current = selectedMode;
-    setMode(selectedMode);
+    setMode("ai");
   }
 
   function restart() {
@@ -362,58 +384,68 @@ export default function Tennis() {
     };
   }
 
-  function moveP1To(canvasX) {
+  function moveP1To(canvasX, canvasY) {
     const s = stateRef.current;
     if (!s) return;
     s.p1.x = Math.max(FIELD_LEFT, Math.min(FIELD_RIGHT - PAD_W, canvasX - PAD_W / 2));
+    if (canvasY !== undefined) {
+      s.p1.y = Math.max(P1_MIN_Y, Math.min(P1_BASE_Y, canvasY - PAD_H - DOT_OFFSET));
+    }
+  }
+
+  function hitDot(pos) {
+    const s = stateRef.current;
+    if (!s) return false;
+    const dotX = s.p1.x + PAD_W / 2;
+    const dotY = s.p1.y + PAD_H + DOT_OFFSET;
+    const dx = pos.x - dotX;
+    const dy = pos.y - dotY;
+    return Math.sqrt(dx * dx + dy * dy) <= DOT_R + 15;
   }
 
   function onTouchStart(e) {
     e.preventDefault();
     if (overRef.current || pausedRef.current) return;
     const pos = getCanvasPos(e.touches[0]);
-    if (pos.y >= FIELD_H) {
-      sliderDragging.current = true;
-      moveP1To(pos.x);
+    if (hitDot(pos)) {
+      dotDragging.current = true;
+      moveP1To(pos.x, pos.y);
     }
   }
 
   function onTouchMove(e) {
     e.preventDefault();
-    if (overRef.current || pausedRef.current) return;
-    if (sliderDragging.current) {
-      const pos = getCanvasPos(e.touches[0]);
-      moveP1To(pos.x);
-    }
+    if (overRef.current || pausedRef.current || !dotDragging.current) return;
+    const pos = getCanvasPos(e.touches[0]);
+    moveP1To(pos.x, pos.y);
   }
 
   function onTouchEnd(e) {
     e.preventDefault();
-    sliderDragging.current = false;
+    dotDragging.current = false;
   }
 
   function onMouseDown(e) {
     if (overRef.current || pausedRef.current) return;
     const pos = getCanvasPos(e);
-    if (pos.y >= FIELD_H) {
-      sliderDragging.current = true;
-      moveP1To(pos.x);
+    if (hitDot(pos)) {
+      dotDragging.current = true;
+      moveP1To(pos.x, pos.y);
     }
   }
 
   function onMouseMove(e) {
-    if (!sliderDragging.current) return;
-    if (overRef.current || pausedRef.current) return;
+    if (overRef.current || pausedRef.current || !dotDragging.current) return;
     const pos = getCanvasPos(e);
-    moveP1To(pos.x);
+    moveP1To(pos.x, pos.y);
   }
 
   function onMouseUp() {
-    sliderDragging.current = false;
+    dotDragging.current = false;
   }
 
   useEffect(() => {
-    if (over && score[0] > 0 && mode !== "ai" && (!highScore || score[0] > highScore.score)) {
+    if (over && score[0] > 0 && (!highScore || score[0] > highScore.score)) {
       setNewRecord(true);
     }
   }, [over]);
@@ -459,12 +491,10 @@ export default function Tennis() {
             Rekord: <span style={{ color: "#ffd166", fontWeight: 700 }}>{highScore.name}</span> – {highScore.score}
           </p>
         )}
-        <div>
-          <button onClick={() => startGame("ai")} style={btnStyle}>Start</button>
-        </div>
+        <button onClick={startGame} style={btnStyle}>Start</button>
         <div style={{ marginTop: "1.5rem", color: "#6b8f8a", fontSize: "0.85rem" }}>
-          <p><strong>Keyboard:</strong> ←/→</p>
-          <p><strong>Touch:</strong> Schieberegler unten</p>
+          <p><strong>Keyboard:</strong> ←/→ bewegen · ↑ zum Netz</p>
+          <p><strong>Touch:</strong> Punkt ziehen</p>
         </div>
         <Link
           to="/"
@@ -539,7 +569,7 @@ export default function Tennis() {
         </div>
       )}
       <p style={{ marginTop: "0.75rem", color: "#666", fontSize: "0.85rem" }}>
-        ←/→: bewegen &middot; P/Esc: Pause &middot; Slider: ziehen
+        ←/→/↑/↓: bewegen · P/Esc: Pause · Punkt: ziehen
       </p>
       <Link
         to="/"
