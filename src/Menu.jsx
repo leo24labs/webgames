@@ -1,18 +1,20 @@
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 
-const HS_KEY = "tetris_highscore";
+const HS_KEY_TETRIS = "tetris_highscore";
+const HS_KEY_TENNIS = "tennis_highscore";
 
-function loadHighScore() {
+function loadHighScore(key) {
   try {
-    return JSON.parse(localStorage.getItem(HS_KEY)) || null;
+    return JSON.parse(localStorage.getItem(key)) || null;
   } catch {
     return null;
   }
 }
 
 const games = [
-  { name: "Tetris", path: "/tetris", desc: "Klassiker – Blöcke staple", hsKey: HS_KEY },
+  { name: "Tetris", path: "/tetris", desc: "Klassiker – Blöcke staple", hsKey: HS_KEY_TETRIS, icon: "🧱" },
+  { name: "Tennis", path: "/tennis", desc: "Paddle vs Paddle – 5 Punkte zum Sieg", hsKey: HS_KEY_TENNIS, icon: "🎾" },
 ];
 
 export default function Menu() {
@@ -20,7 +22,7 @@ export default function Menu() {
 
   useEffect(() => {
     const s = {};
-    games.forEach((g) => { s[g.hsKey] = loadHighScore(); });
+    games.forEach((g) => { s[g.hsKey] = loadHighScore(g.hsKey); });
     setScores(s);
   }, []);
 
@@ -61,7 +63,7 @@ export default function Menu() {
               }}
             >
               <div style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>
-                {g.name === "Tetris" ? "🧱" : "🎮"}
+                {g.icon}
               </div>
               <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>{g.name}</div>
               <div style={{ color: "#6b8f8a", fontSize: "0.85rem", marginTop: "0.25rem" }}>
