@@ -104,6 +104,8 @@ export default function Tetris() {
   const [lines, setLines] = useState(0);
   const [level, setLevel] = useState(0);
   const [over, setOver] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
   const [borderColor, setBorderColor] = useState("#00897b");
   const [tetrisBonus, setTetrisBonus] = useState(false);
   const [highScore, setHighScore] = useState(loadHighScore);
@@ -113,6 +115,10 @@ export default function Tetris() {
   const animRef = useRef(false);
   const flashRowsRef = useRef([]);
   const flashTimerRef = useRef(0);
+  const touchRepeatRef = useRef(null);
+  const touchStartRef = useRef(null);
+  const touchMovedRef = useRef(false);
+  const touchAxisRef = useRef(null);
 
   function draw() {
     const ctx = canvasRef.current?.getContext("2d");
@@ -153,6 +159,16 @@ export default function Tetris() {
       );
     }
     drawNext();
+
+    if (pausedRef.current) {
+      ctx.fillStyle = "rgba(10,18,16,0.75)";
+      ctx.fillRect(0, 0, COLS * BLOCK, ROWS * BLOCK);
+      ctx.fillStyle = "#ffd166";
+      ctx.font = "bold 28px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("PAUSE", (COLS * BLOCK) / 2, (ROWS * BLOCK) / 2);
+      ctx.textAlign = "start";
+    }
   }
 
   function drawNext() {
@@ -177,6 +193,127 @@ export default function Tetris() {
         }
       }),
     );
+  }
+
+  function moveLeft() {
+    if (gameOverRef.current || animRef.current) return;
+    const piece = pieceRef.current;
+    if (valid(boardRef.current, piece, -1, 0)) piece.x--;
+    draw();
+  }
+
+  function moveRight() {
+    if (gameOverRef.current || animRef.current) return;
+    const piece = pieceRef.current;
+    if (valid(boardRef.current, piece, 1, 0)) piece.x++;
+    draw();
+  }
+
+  function moveDown() {
+    if (gameOverRef.current || animRef.current) return;
+    const piece = pieceRef.current;
+    if (valid(boardRef.current, piece, 0, 1)) piece.y++;
+    draw();
+  }
+
+  function rotatePiece() {
+    if (gameOverRef.current || animRef.current) return;
+    applyRotation(pieceRef.current);
+    draw();
+  }
+
+  function applyRotation(piece) {
+    const r = rotate(piece);
+    const kicks = [[0, 0], [-1, 0], [1, 0], [-2, 0], [2, 0], [0, -1], [-1, -1], [1, -1]];
+    for (const [dx, dy] of kicks) {
+      if (valid(boardRef.current, r, dx, dy)) {
+        piece.x += dx;
+        piece.y += dy;
+        piece.shape = r.shape;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function hardDrop() {
+    if (gameOverRef.current || animRef.current) return;
+    const piece = pieceRef.current;
+    while (valid(boardRef.current, piece, 0, 1)) piece.y++;
+    draw();
+    tick();
+  }
+
+  function startRepeat(action) {
+    action();
+    stopRepeat();
+    touchRepeatRef.current = setInterval(action, 80);
+  }
+
+  function stopRepeat() {
+    if (touchRepeatRef.current) {
+      clearInterval(touchRepeatRef.current);
+      touchRepeatRef.current = null;
+    }
+  }
+
+  function togglePause() {
+    if (gameOverRef.current) return;
+    const next = !pausedRef.current;
+    pausedRef.current = next;
+    setPaused(next);
+    if (next) {
+      clearInterval(dropRef.current);
+    } else {
+      dropRef.current = setInterval(tick, getSpeed());
+    }
+  }
+
+  function onCanvasTouchStart(e) {
+    if (gameOverRef.current || pausedRef.current) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY, time: Date.now() };
+    touchMovedRef.current = false;
+    touchAxisRef.current = null;
+  }
+
+  function onCanvasTouchMove(e) {
+    e.preventDefault();
+    if (!touchStartRef.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - touchStartRef.current.x;
+    const dy = t.clientY - touchStartRef.current.y;
+
+    if (!touchAxisRef.current) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      touchAxisRef.current = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+    }
+
+    if (touchAxisRef.current === "x" && Math.abs(dx) >= BLOCK * 0.8) {
+      if (dx > 0) moveRight(); else moveLeft();
+      touchStartRef.current.x = t.clientX;
+      touchMovedRef.current = true;
+    }
+    if (touchAxisRef.current === "y" && dy >= BLOCK * 0.8) {
+      moveDown();
+      touchStartRef.current.y = t.clientY;
+      touchMovedRef.current = true;
+    }
+  }
+
+  function onCanvasTouchEnd(e) {
+    e.preventDefault();
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start || gameOverRef.current || pausedRef.current) return;
+    const t = e.changedTouches[0];
+    const dx = Math.abs(t.clientX - start.x);
+    const dy = Math.abs(t.clientY - start.y);
+    const dt = Date.now() - start.time;
+    if (dt < 200 && dx < BLOCK * 0.5 && dy < BLOCK * 0.5 && !touchMovedRef.current) {
+      rotatePiece();
+    }
   }
 
   function finishClear() {
@@ -214,7 +351,7 @@ export default function Tetris() {
   }
 
   function tick() {
-    if (gameOverRef.current || animRef.current) return;
+    if (gameOverRef.current || animRef.current || pausedRef.current) return;
     const board = boardRef.current;
     const piece = pieceRef.current;
     if (valid(board, piece, 0, 1)) {
@@ -280,6 +417,7 @@ export default function Tetris() {
     levelRef.current = 0;
     gameOverRef.current = false;
     animRef.current = false;
+    pausedRef.current = false;
     flashRowsRef.current = [];
     setScore(0);
     setLines(0);
@@ -287,9 +425,11 @@ export default function Tetris() {
     setOver(false);
     setBorderColor("#00897b");
     setTetrisBonus(false);
+    setPaused(false);
     setNewRecord(false);
     setPlayerName("");
     clearInterval(dropRef.current);
+    stopRepeat();
     dropRef.current = setInterval(tick, getSpeed());
     draw();
   }
@@ -300,6 +440,14 @@ export default function Tetris() {
 
     function onKey(e) {
       if (gameOverRef.current) return;
+
+      if (e.key === "p" || e.key === "P" || e.key === "Escape") {
+        togglePause();
+        e.preventDefault();
+        return;
+      }
+
+      if (pausedRef.current) return;
       const board = boardRef.current;
       const piece = pieceRef.current;
 
@@ -313,11 +461,9 @@ export default function Tetris() {
         case "ArrowDown":
           if (valid(board, piece, 0, 1)) piece.y++;
           break;
-        case "ArrowUp": {
-          const r = rotate(piece);
-          if (valid(board, r, 0, 0)) piece.shape = r.shape;
+        case "ArrowUp":
+          applyRotation(piece);
           break;
-        }
         case " ":
           while (valid(board, piece, 0, 1)) piece.y++;
           break;
@@ -332,6 +478,7 @@ export default function Tetris() {
     return () => {
       window.removeEventListener("keydown", onKey);
       clearInterval(dropRef.current);
+      stopRepeat();
     };
   }, []);
 
@@ -348,18 +495,54 @@ export default function Tetris() {
     }
   }, [level]);
 
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    function check() {
+      const w = window.innerWidth;
+      const s = w < 450 ? Math.max(0.6, (w - 20) / 450) : 1;
+      setScale((prev) => (prev === s ? prev : s));
+    }
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   const boardHeight = ROWS * BLOCK;
   const sideWidth = 110;
+  const touchBtnStyle = {
+    width: 56,
+    height: 56,
+    fontSize: "1.4rem",
+    fontWeight: 700,
+    background: "#162a2d",
+    color: "#00897b",
+    border: "2px solid #00897b",
+    borderRadius: 10,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    touchAction: "manipulation",
+  };
 
   return (
     <div style={{ textAlign: "center" }}>
+      <div style={{
+        display: "inline-block",
+        transform: scale < 1 ? `scale(${scale})` : undefined,
+        transformOrigin: "top center",
+      }}>
       <h1 style={{ marginBottom: "1.5rem" }}>Tetris</h1>
       <div style={{ display: "inline-flex", alignItems: "start", gap: "0.75rem", marginTop: "0.5rem" }}>
         <canvas
           ref={canvasRef}
           width={COLS * BLOCK}
           height={ROWS * BLOCK}
-          style={{ border: `2px solid ${borderColor}`, borderRadius: 4 }}
+          onTouchStart={onCanvasTouchStart}
+          onTouchMove={onCanvasTouchMove}
+          onTouchEnd={onCanvasTouchEnd}
+          style={{ border: `2px solid ${borderColor}`, borderRadius: 4, touchAction: "none" }}
         />
         <div style={{ width: sideWidth, display: "flex", flexDirection: "column", justifyContent: "space-between", height: boardHeight }}>
           <div style={{
@@ -383,7 +566,7 @@ export default function Tetris() {
                 <div style={{ color: "#aaa", fontSize: "0.75rem", marginTop: "0.4rem", marginBottom: "0.25rem" }}>Lines</div>
                 <div style={{ color: "#eee", fontWeight: 600 }}>{lines}</div>
                 <div style={{ color: "#aaa", fontSize: "0.75rem", marginTop: "0.4rem", marginBottom: "0.25rem" }}>Level</div>
-                <div style={{ color: "#eee", fontWeight: 600 }}>{level}</div>
+                <div style={{ color: "#eee", fontWeight: 600 }}>{level + 1}</div>
               </>
             )}
           </div>
@@ -460,8 +643,61 @@ export default function Tetris() {
         </div>
       )}
       <p style={{ marginTop: "0.75rem", color: "#666", fontSize: "0.85rem" }}>
-        Pfeiltasten: bewegen/drehen &middot; Leertaste: fallen
+        Pfeiltasten: bewegen/drehen &middot; Leertaste: fallen &middot; P: Pause &middot; Tippen: drehen &middot; Swipe: bewegen
       </p>
+      <div style={{
+        marginTop: "1rem",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "0.5rem",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+      }}>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            onClick={togglePause}
+            style={{ ...touchBtnStyle, color: paused ? "#ffd166" : "#00897b", borderColor: paused ? "#ffd166" : "#00897b" }}
+          >{paused ? "▶" : "⏸"}</button>
+          <button
+            onClick={rotatePiece}
+            style={touchBtnStyle}
+          >↻</button>
+          <button
+            onClick={hardDrop}
+            style={touchBtnStyle}
+          >⬇</button>
+        </div>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); startRepeat(moveLeft); }}
+            onTouchEnd={(e) => { e.preventDefault(); stopRepeat(); }}
+            onTouchCancel={(e) => { e.preventDefault(); stopRepeat(); }}
+            onMouseDown={(e) => { e.preventDefault(); startRepeat(moveLeft); }}
+            onMouseUp={(e) => { e.preventDefault(); stopRepeat(); }}
+            onMouseLeave={() => stopRepeat()}
+            style={touchBtnStyle}
+          >←</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); startRepeat(moveDown); }}
+            onTouchEnd={(e) => { e.preventDefault(); stopRepeat(); }}
+            onTouchCancel={(e) => { e.preventDefault(); stopRepeat(); }}
+            onMouseDown={(e) => { e.preventDefault(); startRepeat(moveDown); }}
+            onMouseUp={(e) => { e.preventDefault(); stopRepeat(); }}
+            onMouseLeave={() => stopRepeat()}
+            style={touchBtnStyle}
+          >↓</button>
+          <button
+            onTouchStart={(e) => { e.preventDefault(); startRepeat(moveRight); }}
+            onTouchEnd={(e) => { e.preventDefault(); stopRepeat(); }}
+            onTouchCancel={(e) => { e.preventDefault(); stopRepeat(); }}
+            onMouseDown={(e) => { e.preventDefault(); startRepeat(moveRight); }}
+            onMouseUp={(e) => { e.preventDefault(); stopRepeat(); }}
+            onMouseLeave={() => stopRepeat()}
+            style={touchBtnStyle}
+          >→</button>
+        </div>
+      </div>
       <Link
         to="/"
         style={{
@@ -475,6 +711,7 @@ export default function Tetris() {
       >
         ← Zurück zum Menü
       </Link>
+      </div>
     </div>
   );
 }
