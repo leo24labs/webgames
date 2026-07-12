@@ -8,7 +8,6 @@ const CANVAS_H = FIELD_H;
 const PAD_W = 60;
 const PAD_H = 10;
 const BALL_R = 5;
-const WIN_SCORE = 5;
 const BALL_SPEED_INIT = 2.5;
 const BALL_SPEED_INC = 0.5;
 const AI_SPEED = 3.5;
@@ -26,6 +25,31 @@ const P2_BASE_Y = FIELD_TOP;
 const P1_MIN_Y = FIELD_MID_Y + 30;
 const P2_MAX_Y = FIELD_MID_Y - 30;
 
+const POINT_LABELS = ["0", "15", "30", "40"];
+
+function tennisScore(p1, p2) {
+  if (p1 < 3 && p2 < 3) {
+    return { p1: POINT_LABELS[p1], p2: POINT_LABELS[p2], special: null };
+  }
+  if (p1 >= 3 && p2 >= 3) {
+    if (p1 === p2) return { p1: "40", p2: "40", special: "Einstand" };
+    if (p1 > p2) return { p1: "40", p2: "40", special: "Vorteil Du" };
+    return { p1: "40", p2: "40", special: "Vorteil KI" };
+  }
+  return { p1: POINT_LABELS[Math.min(p1, 3)], p2: POINT_LABELS[Math.min(p2, 3)], special: null };
+}
+
+function checkGameWinner(p1, p2) {
+  if (p1 >= 3 && p2 >= 3) {
+    if (p1 - p2 >= 2) return "Du";
+    if (p2 - p1 >= 2) return "KI";
+    return null;
+  }
+  if (p1 >= 4) return "Du";
+  if (p2 >= 4) return "KI";
+  return null;
+}
+
 function loadHighScore() {
   try {
     return JSON.parse(localStorage.getItem(HS_KEY)) || null;
@@ -40,11 +64,13 @@ function saveHighScore(name, score) {
 
 function initState() {
   return {
-    p1: { x: FIELD_W / 2 - PAD_W / 2, y: P1_BASE_Y, score: 0 },
-    p2: { x: FIELD_W / 2 - PAD_W / 2, y: P2_BASE_Y, score: 0 },
+    p1: { x: FIELD_W / 2 - PAD_W / 2, y: P1_BASE_Y },
+    p2: { x: FIELD_W / 2 - PAD_W / 2, y: P2_BASE_Y },
     ball: { x: FIELD_W / 2, y: FIELD_MID_Y - 20, vx: 1.5, vy: -BALL_SPEED_INIT },
     speed: BALL_SPEED_INIT,
     rally: 0,
+    p1Pts: 0,
+    p2Pts: 0,
   };
 }
 
@@ -85,10 +111,8 @@ function drawCourt(ctx) {
   ctx.lineTo(FIELD_W / 2, FIELD_BOT - 10);
   ctx.stroke();
 
-  // net - clearly visible
   ctx.fillStyle = "#fff";
   ctx.fillRect(FIELD_LEFT - 4, FIELD_MID_Y - 2, FIELD_RIGHT - FIELD_LEFT + 8, 4);
-  // net mesh
   ctx.strokeStyle = "rgba(255,255,255,0.5)";
   ctx.lineWidth = 1;
   for (let x = FIELD_LEFT; x <= FIELD_RIGHT; x += 10) {
@@ -103,7 +127,6 @@ function drawCourt(ctx) {
     ctx.lineTo(FIELD_RIGHT, y);
     ctx.stroke();
   }
-  // net posts
   ctx.fillStyle = "#aaa";
   ctx.fillRect(FIELD_LEFT - 6, FIELD_MID_Y - 14, 8, 28);
   ctx.fillRect(FIELD_RIGHT - 2, FIELD_MID_Y - 14, 8, 28);
@@ -114,7 +137,7 @@ export default function Tennis() {
   const stateRef = useRef(null);
   const keysRef = useRef({});
   const [mode, setMode] = useState(null);
-  const [score, setScore] = useState([0, 0]);
+  const [score, setScore] = useState({ p1: 0, p2: 0 });
   const [over, setOver] = useState(false);
   const [winner, setWinner] = useState("");
   const [highScore, setHighScore] = useState(loadHighScore);
@@ -122,7 +145,6 @@ export default function Tennis() {
   const [playerName, setPlayerName] = useState("");
   const pausedRef = useRef(false);
   const overRef = useRef(false);
-  const modeRef = useRef(null);
   const animRef = useRef(null);
   const hitFlashRef = useRef(0);
   const dotDragging = useRef(false);
@@ -138,14 +160,12 @@ export default function Tennis() {
     const p1Flash = hitFlashRef.current > 0;
     if (p1Flash) hitFlashRef.current--;
 
-    // player paddle
     ctx.fillStyle = p1Flash ? "#ffd166" : "#00897b";
     ctx.shadowColor = p1Flash ? "#ffd166" : "transparent";
     ctx.shadowBlur = p1Flash ? 14 : 0;
     ctx.fillRect(s.p1.x, s.p1.y, PAD_W, PAD_H);
     ctx.shadowBlur = 0;
 
-    // control dot + line
     ctx.strokeStyle = "rgba(255,209,102,0.4)";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -157,25 +177,33 @@ export default function Tennis() {
     ctx.arc(s.p1.x + PAD_W / 2, s.p1.y + PAD_H + DOT_OFFSET, DOT_R, 0, Math.PI * 2);
     ctx.fill();
 
-    // AI paddle
     ctx.fillStyle = "#00897b";
     ctx.fillRect(s.p2.x, s.p2.y, PAD_W, PAD_H);
 
-    // ball
     ctx.fillStyle = "#ffd166";
     ctx.beginPath();
     ctx.arc(s.ball.x, s.ball.y, BALL_R, 0, Math.PI * 2);
     ctx.fill();
 
-    // scores
+    const ts = tennisScore(s.p1Pts, s.p2Pts);
     ctx.textAlign = "center";
-    ctx.font = "bold 28px sans-serif";
-    ctx.fillStyle = "rgba(0,0,0,0.3)";
-    ctx.fillText(s.p2.score, FIELD_W / 2 + 1, FIELD_TOP + 51);
-    ctx.fillText(s.p1.score, FIELD_W / 2 + 1, FIELD_BOT - 39);
-    ctx.fillStyle = "#fff";
-    ctx.fillText(s.p2.score, FIELD_W / 2, FIELD_TOP + 50);
-    ctx.fillText(s.p1.score, FIELD_W / 2, FIELD_BOT - 40);
+
+    if (ts.special) {
+      ctx.font = "bold 22px sans-serif";
+      ctx.fillStyle = "#ffd166";
+      ctx.fillText(ts.special, FIELD_W / 2, FIELD_MID_Y - 20);
+      ctx.font = "bold 14px sans-serif";
+      ctx.fillStyle = "#6b8f8a";
+      ctx.fillText("Du: " + ts.p1 + "  KI: " + ts.p2, FIELD_W / 2, FIELD_MID_Y + 2);
+    } else {
+      ctx.font = "bold 32px sans-serif";
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.fillText(ts.p1, FIELD_W / 2 + 1, FIELD_BOT - 39);
+      ctx.fillText(ts.p2, FIELD_W / 2 + 1, FIELD_TOP + 51);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(ts.p1, FIELD_W / 2, FIELD_BOT - 40);
+      ctx.fillText(ts.p2, FIELD_W / 2, FIELD_TOP + 50);
+    }
 
     ctx.font = "11px sans-serif";
     ctx.fillStyle = "rgba(255,255,255,0.5)";
@@ -191,6 +219,22 @@ export default function Tennis() {
     }
   }, []);
 
+  function awardPoint(who) {
+    const s = stateRef.current;
+    if (!s) return;
+    if (who === "p1") s.p1Pts++;
+    else s.p2Pts++;
+    setScore({ p1: s.p1Pts, p2: s.p2Pts });
+
+    const w = checkGameWinner(s.p1Pts, s.p2Pts);
+    if (w) {
+      overRef.current = true;
+      setWinner(w);
+      setOver(true);
+      return;
+    }
+  }
+
   const tick = useCallback(() => {
     const s = stateRef.current;
     if (!s || pausedRef.current || overRef.current) return;
@@ -201,7 +245,6 @@ export default function Tennis() {
     if (keys["ArrowUp"]) s.p1.y = Math.max(P1_MIN_Y, s.p1.y - 5);
     if (keys["ArrowDown"]) s.p1.y = Math.min(P1_BASE_Y, s.p1.y + 5);
 
-    // AI
     const target = s.ball.x - PAD_W / 2;
     const diffX = target - s.p2.x;
     if (Math.abs(diffX) > 4) {
@@ -224,50 +267,29 @@ export default function Tennis() {
     b.x += b.vx;
     b.y += b.vy;
 
-    // side walls - no bounce, ball goes out
     if (b.x < FIELD_LEFT - 15 || b.x > FIELD_RIGHT + 15) {
-      s.p2.score++;
-      setScore([s.p1.score, s.p2.score]);
-      if (s.p2.score >= WIN_SCORE) {
-        overRef.current = true;
-        setWinner("KI");
-        setOver(true);
-        return;
-      }
+      awardPoint("p2");
+      if (overRef.current) return;
       resetBall(s, -1);
       draw();
       return;
     }
 
-    // top/bottom bounce off baseline
     if (b.y <= FIELD_TOP + BALL_R) {
-      s.p1.score++;
-      setScore([s.p1.score, s.p2.score]);
-      if (s.p1.score >= WIN_SCORE) {
-        overRef.current = true;
-        setWinner("Du");
-        setOver(true);
-        return;
-      }
+      awardPoint("p1");
+      if (overRef.current) return;
       resetBall(s, 1);
       draw();
       return;
     }
     if (b.y >= FIELD_BOT - BALL_R) {
-      s.p2.score++;
-      setScore([s.p1.score, s.p2.score]);
-      if (s.p2.score >= WIN_SCORE) {
-        overRef.current = true;
-        setWinner("KI");
-        setOver(true);
-        return;
-      }
+      awardPoint("p2");
+      if (overRef.current) return;
       resetBall(s, -1);
       draw();
       return;
     }
 
-    // net collision
     if (b.y >= FIELD_MID_Y - 2 && b.y <= FIELD_MID_Y + 2) {
       if (b.x >= FIELD_LEFT && b.x <= FIELD_RIGHT) {
         b.vy *= -0.3;
@@ -276,7 +298,6 @@ export default function Tennis() {
       }
     }
 
-    // player paddle hit
     const p1y = s.p1.y;
     if (
       b.vy > 0 &&
@@ -295,7 +316,6 @@ export default function Tennis() {
       hitFlashRef.current = 6;
     }
 
-    // AI paddle hit
     const p2y = s.p2.y;
     if (
       b.vy < 0 &&
@@ -334,7 +354,7 @@ export default function Tennis() {
   }, [mode, tick, draw]);
 
   function startGame() {
-    setScore([0, 0]);
+    setScore({ p1: 0, p2: 0 });
     setOver(false);
     overRef.current = false;
     setWinner("");
@@ -345,7 +365,7 @@ export default function Tennis() {
   }
 
   function restart() {
-    setScore([0, 0]);
+    setScore({ p1: 0, p2: 0 });
     setOver(false);
     overRef.current = false;
     setWinner("");
@@ -368,8 +388,8 @@ export default function Tennis() {
   function saveRecord() {
     const name = playerName.trim().toUpperCase().slice(0, 5);
     if (!name) return;
-    saveHighScore(name, score[0]);
-    setHighScore({ name, score: score[0] });
+    saveHighScore(name, score.p1);
+    setHighScore({ name, score: score.p1 });
     setNewRecord(false);
     setPlayerName("");
   }
@@ -445,7 +465,7 @@ export default function Tennis() {
   }
 
   useEffect(() => {
-    if (over && score[0] > 0 && (!highScore || score[0] > highScore.score)) {
+    if (over && score.p1 > 0 && (!highScore || score.p1 > highScore.score)) {
       setNewRecord(true);
     }
   }, [over]);
@@ -485,7 +505,8 @@ export default function Tennis() {
     return (
       <div style={{ textAlign: "center" }}>
         <h1 style={{ marginBottom: "0.5rem" }}>Tennis</h1>
-        <p style={{ color: "#6b8f8a", marginBottom: "1.5rem" }}>Wer zuerst {WIN_SCORE} Punkte macht, gewinnt!</p>
+        <p style={{ color: "#6b8f8a", marginBottom: "0.5rem" }}>Echt Tennis: 15 · 30 · 40 · Einstand · Vorteil</p>
+        <p style={{ color: "#6b8f8a", marginBottom: "1.5rem", fontSize: "0.85rem" }}>Gewinne ein Game!</p>
         {highScore && (
           <p style={{ color: "#6b8f8a", fontSize: "0.85rem", marginBottom: "1rem" }}>
             Rekord: <span style={{ color: "#ffd166", fontWeight: 700 }}>{highScore.name}</span> – {highScore.score}
@@ -532,7 +553,7 @@ export default function Tennis() {
       {over && (
         <div style={{ marginTop: "1rem" }}>
           <p style={{ color: "#ffd166", fontWeight: 700, fontSize: "1.2rem" }}>
-            {winner} gewinnt!
+            {winner} gewinnt das Game!
           </p>
           {newRecord ? (
             <div style={{ marginTop: "0.75rem" }}>
@@ -587,3 +608,4 @@ export default function Tennis() {
     </div>
   );
 }
+      
