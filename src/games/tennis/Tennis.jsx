@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 
-const W = 600;
-const H = 400;
-const PAD_W = 12;
-const PAD_H = 70;
+const W = 400;
+const H = 600;
+const PAD_W = 70;
+const PAD_H = 12;
 const BALL_SIZE = 10;
 const WIN_SCORE = 5;
 const PAD_SPEED = 6;
@@ -25,6 +25,23 @@ function saveHighScore(name, score) {
   localStorage.setItem(HS_KEY, JSON.stringify({ name, score }));
 }
 
+function initState() {
+  return {
+    p1: { x: W / 2 - PAD_W / 2, score: 0 },
+    p2: { x: W / 2 - PAD_W / 2, score: 0 },
+    ball: { x: W / 2, y: H / 2, vx: 0, vy: -BALL_SPEED_INIT },
+    speed: BALL_SPEED_INIT,
+    rally: 0,
+    lastHit: null,
+  };
+}
+
+function resetBall(s, dir) {
+  s.ball = { x: W / 2, y: H / 2, vx: 0, vy: dir * BALL_SPEED_INIT };
+  s.speed = BALL_SPEED_INIT;
+  s.rally = 0;
+}
+
 export default function Tennis() {
   const canvasRef = useRef(null);
   const stateRef = useRef(null);
@@ -36,22 +53,13 @@ export default function Tennis() {
   const [highScore, setHighScore] = useState(loadHighScore);
   const [newRecord, setNewRecord] = useState(false);
   const [playerName, setPlayerName] = useState("");
-  const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
+  const overRef = useRef(false);
+  const modeRef = useRef(null);
   const animRef = useRef(null);
+  const touchStartRef = useRef(null);
 
-  function initState() {
-    return {
-      p1: { y: H / 2 - PAD_H / 2, score: 0 },
-      p2: { y: H / 2 - PAD_H / 2, score: 0 },
-      ball: { x: W / 2, y: H / 2, vx: BALL_SPEED_INIT, vy: 0 },
-      speed: BALL_SPEED_INIT,
-      rally: 0,
-      lastHit: null,
-    };
-  }
-
-  function draw() {
+  const draw = useCallback(() => {
     const ctx = canvasRef.current?.getContext("2d");
     const s = stateRef.current;
     if (!ctx || !s) return;
@@ -63,30 +71,30 @@ export default function Tennis() {
     ctx.lineWidth = 2;
     ctx.setLineDash([8, 8]);
     ctx.beginPath();
-    ctx.moveTo(W / 2, 0);
-    ctx.lineTo(W / 2, H);
+    ctx.moveTo(0, H / 2);
+    ctx.lineTo(W, H / 2);
     ctx.stroke();
     ctx.setLineDash([]);
 
     ctx.fillStyle = "#00897b";
-    ctx.fillRect(20, s.p1.y, PAD_W, PAD_H);
-    ctx.fillRect(W - 20 - PAD_W, s.p2.y, PAD_W, PAD_H);
+    ctx.fillRect(s.p2.x, 20, PAD_W, PAD_H);
+    ctx.fillRect(s.p1.x, H - 20 - PAD_H, PAD_W, PAD_H);
 
     ctx.fillStyle = "#ffd166";
     ctx.beginPath();
     ctx.arc(s.ball.x, s.ball.y, BALL_SIZE / 2, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = "#6b8f8a";
-    ctx.font = "bold 36px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(s.p1.score, W / 4, 50);
-    ctx.fillText(s.p2.score, (W * 3) / 4, 50);
+    ctx.font = "bold 36px sans-serif";
+    ctx.fillStyle = "#6b8f8a";
+    ctx.fillText(s.p2.score, W / 2, 60);
+    ctx.fillText(s.p1.score, W / 2, H - 35);
 
-    ctx.fillStyle = "#333";
     ctx.font = "14px sans-serif";
-    ctx.fillText("Spieler 1", W / 4, 70);
-    ctx.fillText(mode === "ai" ? "KI" : "Spieler 2", (W * 3) / 4, 70);
+    ctx.fillStyle = "#333";
+    ctx.fillText(modeRef.current === "ai" ? "KI" : "Spieler 2", W / 2, 80);
+    ctx.fillText("Du", W / 2, H - 18);
 
     if (pausedRef.current) {
       ctx.fillStyle = "rgba(10,18,16,0.75)";
@@ -95,130 +103,145 @@ export default function Tennis() {
       ctx.font = "bold 28px sans-serif";
       ctx.fillText("PAUSE", W / 2, H / 2);
     }
-  }
+  }, []);
 
-  function tick() {
+  const tick = useCallback(() => {
     const s = stateRef.current;
-    if (!s || pausedRef.current) return;
+    if (!s || pausedRef.current || overRef.current) return;
 
     const keys = keysRef.current;
-    if (keys["w"] || keys["W"]) s.p1.y = Math.max(0, s.p1.y - PAD_SPEED);
-    if (keys["s"] || keys["S"]) s.p1.y = Math.min(H - PAD_H, s.p1.y + PAD_SPEED);
+    if (keys["ArrowLeft"]) s.p1.x = Math.max(0, s.p1.x - PAD_SPEED);
+    if (keys["ArrowRight"]) s.p1.x = Math.min(W - PAD_W, s.p1.x + PAD_SPEED);
 
-    if (mode === "ai") {
-      const target = s.ball.y - PAD_H / 2;
-      const diff = target - s.p2.y;
+    if (modeRef.current === "ai") {
+      const target = s.ball.x - PAD_W / 2;
+      const diff = target - s.p2.x;
       if (Math.abs(diff) > 4) {
-        s.p2.y += Math.sign(diff) * Math.min(AI_SPEED, Math.abs(diff));
+        s.p2.x += Math.sign(diff) * Math.min(AI_SPEED, Math.abs(diff));
       }
     } else {
-      if (keys["ArrowUp"]) s.p2.y = Math.max(0, s.p2.y - PAD_SPEED);
-      if (keys["ArrowDown"]) s.p2.y = Math.min(H - PAD_H, s.p2.y + PAD_SPEED);
+      if (keys["a"] || keys["A"]) s.p2.x = Math.max(0, s.p2.x - PAD_SPEED);
+      if (keys["d"] || keys["D"]) s.p2.x = Math.min(W - PAD_W, s.p2.x + PAD_SPEED);
     }
 
     const b = s.ball;
     b.x += b.vx;
     b.y += b.vy;
 
-    if (b.y <= 0 || b.y >= H) {
-      b.vy *= -1;
-      b.y = Math.max(0, Math.min(H, b.y));
+    if (b.x <= 0 || b.x >= W) {
+      b.vx *= -1;
+      b.x = Math.max(0, Math.min(W, b.x));
     }
 
-    const p1x = 20;
-    const p2x = W - 20 - PAD_W;
+    const p1y = H - 20 - PAD_H;
+    const p2y = 20;
 
     if (
-      b.vx < 0 &&
-      b.x - BALL_SIZE / 2 <= p1x + PAD_W &&
-      b.x - BALL_SIZE / 2 >= p1x - 10 &&
-      b.y >= s.p1.y &&
-      b.y <= s.p1.y + PAD_H
+      b.vy > 0 &&
+      b.y + BALL_SIZE / 2 >= p1y &&
+      b.y + BALL_SIZE / 2 <= p1y + PAD_H + 10 &&
+      b.x >= s.p1.x &&
+      b.x <= s.p1.x + PAD_W
     ) {
-      const hitPos = (b.y - s.p1.y) / PAD_H;
+      const hitPos = (b.x - s.p1.x) / PAD_W;
       const angle = (hitPos - 0.5) * (Math.PI / 3);
       s.speed = Math.min(12, s.speed + BALL_SPEED_INC);
-      b.vx = Math.abs(Math.cos(angle) * s.speed);
-      b.vy = Math.sin(angle) * s.speed;
-      b.x = p1x + PAD_W + BALL_SIZE / 2;
+      b.vy = -Math.abs(Math.cos(angle) * s.speed);
+      b.vx = Math.sin(angle) * s.speed;
+      b.y = p1y - BALL_SIZE / 2;
       s.rally++;
       s.lastHit = 1;
     }
 
     if (
-      b.vx > 0 &&
-      b.x + BALL_SIZE / 2 >= p2x &&
-      b.x + BALL_SIZE / 2 <= p2x + PAD_W + 10 &&
-      b.y >= s.p2.y &&
-      b.y <= s.p2.y + PAD_H
+      b.vy < 0 &&
+      b.y - BALL_SIZE / 2 <= p2y + PAD_H &&
+      b.y - BALL_SIZE / 2 >= p2y - 10 &&
+      b.x >= s.p2.x &&
+      b.x <= s.p2.x + PAD_W
     ) {
-      const hitPos = (b.y - s.p2.y) / PAD_H;
+      const hitPos = (b.x - s.p2.x) / PAD_W;
       const angle = (hitPos - 0.5) * (Math.PI / 3);
       s.speed = Math.min(12, s.speed + BALL_SPEED_INC);
-      b.vx = -Math.abs(Math.cos(angle) * s.speed);
-      b.vy = Math.sin(angle) * s.speed;
-      b.x = p2x - BALL_SIZE / 2;
+      b.vy = Math.abs(Math.cos(angle) * s.speed);
+      b.vx = Math.sin(angle) * s.speed;
+      b.y = p2y + PAD_H + BALL_SIZE / 2;
       s.rally++;
       s.lastHit = 2;
     }
 
-    if (b.x < -20) {
+    if (b.y > H + 20) {
       s.p2.score++;
       setScore([s.p1.score, s.p2.score]);
       if (s.p2.score >= WIN_SCORE) {
-        setWinner(mode === "ai" ? "KI" : "Spieler 2");
-        setOver(true);
-        return;
-      }
-      resetBall(s, 1);
-    }
-
-    if (b.x > W + 20) {
-      s.p1.score++;
-      setScore([s.p1.score, s.p2.score]);
-      if (s.p1.score >= WIN_SCORE) {
-        setWinner("Spieler 1");
+        overRef.current = true;
+        setWinner(modeRef.current === "ai" ? "KI" : "Spieler 2");
         setOver(true);
         return;
       }
       resetBall(s, -1);
     }
 
+    if (b.y < -20) {
+      s.p1.score++;
+      setScore([s.p1.score, s.p2.score]);
+      if (s.p1.score >= WIN_SCORE) {
+        overRef.current = true;
+        setWinner("Du");
+        setOver(true);
+        return;
+      }
+      resetBall(s, 1);
+    }
+
+    draw();
+    animRef.current = requestAnimationFrame(tick);
+  }, [draw]);
+
+  function startGameLoop() {
+    stateRef.current = initState();
+    if (animRef.current) cancelAnimationFrame(animRef.current);
     draw();
     animRef.current = requestAnimationFrame(tick);
   }
 
-  function resetBall(s, dir) {
-    s.ball = { x: W / 2, y: H / 2, vx: dir * BALL_SPEED_INIT, vy: 0 };
-    s.speed = BALL_SPEED_INIT;
-    s.rally = 0;
-  }
+  useEffect(() => {
+    if (mode) {
+      startGameLoop();
+    }
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+    };
+  }, [mode, tick, draw]);
 
   function startGame(selectedMode) {
-    setMode(selectedMode);
     setScore([0, 0]);
     setOver(false);
+    overRef.current = false;
     setWinner("");
     setNewRecord(false);
     setPlayerName("");
     pausedRef.current = false;
-    setPaused(false);
-    stateRef.current = initState();
-    draw();
-    if (animRef.current) cancelAnimationFrame(animRef.current);
-    animRef.current = requestAnimationFrame(tick);
+    modeRef.current = selectedMode;
+    setMode(selectedMode);
   }
 
   function restart() {
-    startGame(mode);
+    setScore([0, 0]);
+    setOver(false);
+    overRef.current = false;
+    setWinner("");
+    setNewRecord(false);
+    setPlayerName("");
+    pausedRef.current = false;
+    startGameLoop();
   }
 
   function togglePause() {
-    if (over) return;
+    if (overRef.current) return;
     const next = !pausedRef.current;
     pausedRef.current = next;
-    setPaused(next);
-    if (!next && !over) {
+    if (!next && !overRef.current) {
       animRef.current = requestAnimationFrame(tick);
     }
     draw();
@@ -233,6 +256,31 @@ export default function Tennis() {
     setPlayerName("");
   }
 
+  function onTouchStart(e) {
+    e.preventDefault();
+    if (overRef.current || pausedRef.current) return;
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+  }
+
+  function onTouchMove(e) {
+    e.preventDefault();
+    if (!touchStartRef.current) return;
+    const s = stateRef.current;
+    if (!s) return;
+    const t = e.touches[0];
+    const dx = t.clientX - touchStartRef.current.x;
+    if (Math.abs(dx) >= 4) {
+      s.p1.x = Math.max(0, Math.min(W - PAD_W, s.p1.x + dx));
+      touchStartRef.current.x = t.clientX;
+    }
+  }
+
+  function onTouchEnd(e) {
+    e.preventDefault();
+    touchStartRef.current = null;
+  }
+
   useEffect(() => {
     if (over && score[0] > 0 && mode !== "ai" && (!highScore || score[0] > highScore.score)) {
       setNewRecord(true);
@@ -242,7 +290,6 @@ export default function Tennis() {
   useEffect(() => {
     function onKey(e) {
       keysRef.current[e.key] = true;
-
       if (e.key === "p" || e.key === "P" || e.key === "Escape") {
         togglePause();
         e.preventDefault();
@@ -256,9 +303,8 @@ export default function Tennis() {
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onUp);
-      if (animRef.current) cancelAnimationFrame(animRef.current);
     };
-  }, [over, mode]);
+  }, []);
 
   const btnStyle = {
     padding: "0.6rem 1.5rem",
@@ -287,8 +333,8 @@ export default function Tennis() {
           <button onClick={() => startGame("2p")} style={btnStyle}>2 Spieler</button>
         </div>
         <div style={{ marginTop: "1.5rem", color: "#6b8f8a", fontSize: "0.85rem" }}>
-          <p><strong>Spieler 1:</strong> W / S</p>
-          <p><strong>Spieler 2:</strong> ↑ / ↓</p>
+          <p><strong>Keyboard:</strong> ←/→ oder A/D</p>
+          <p><strong>Touch:</strong> Finger auf dem Canvas nach links/rechts wischen</p>
         </div>
         <Link
           to="/"
@@ -314,7 +360,10 @@ export default function Tennis() {
         ref={canvasRef}
         width={W}
         height={H}
-        style={{ border: "2px solid #00897b", borderRadius: 6 }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{ border: "2px solid #00897b", borderRadius: 6, touchAction: "none" }}
       />
       {over && (
         <div style={{ marginTop: "1rem" }}>
@@ -359,7 +408,7 @@ export default function Tennis() {
         </div>
       )}
       <p style={{ marginTop: "0.75rem", color: "#666", fontSize: "0.85rem" }}>
-        W/S: Spieler 1 &middot; ↑/↓: Spieler 2 &middot; P/Esc: Pause
+        ←/→: bewegen &middot; P/Esc: Pause &middot; Touch: wischen
       </p>
       <Link
         to="/"
