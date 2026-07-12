@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 
-const FIELD_W = 400;
+const FIELD_W = 360;
 const FIELD_H = 600;
 const CANVAS_W = FIELD_W;
-const CANVAS_H = FIELD_H;
-const PAD_W = 60;
+const CANVAS_H = FIELD_H + 60;
+const PAD_W = 55;
 const PAD_H = 10;
 const BALL_R = 5;
 const BALL_SPEED_INIT = 2.5;
@@ -17,8 +17,8 @@ const HS_KEY = "tennis_highscore";
 
 const FIELD_TOP = 30;
 const FIELD_BOT = FIELD_H - 30;
-const FIELD_LEFT = 30;
-const FIELD_RIGHT = FIELD_W - 30;
+const FIELD_LEFT = 40;
+const FIELD_RIGHT = FIELD_W - 40;
 const FIELD_MID_Y = FIELD_H / 2;
 const P1_BASE_Y = FIELD_BOT - PAD_H;
 const P2_BASE_Y = FIELD_TOP;
@@ -157,6 +157,16 @@ export default function Tennis() {
     ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
     drawCourt(ctx);
 
+    // control zone below field
+    ctx.fillStyle = "#0f1923";
+    ctx.fillRect(0, FIELD_H, CANVAS_W, CANVAS_H - FIELD_H);
+    ctx.strokeStyle = "#1a3a35";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(FIELD_LEFT, FIELD_H + 30);
+    ctx.lineTo(FIELD_RIGHT, FIELD_H + 30);
+    ctx.stroke();
+
     const p1Flash = hitFlashRef.current > 0;
     if (p1Flash) hitFlashRef.current--;
 
@@ -166,15 +176,20 @@ export default function Tennis() {
     ctx.fillRect(s.p1.x, s.p1.y, PAD_W, PAD_H);
     ctx.shadowBlur = 0;
 
-    ctx.strokeStyle = "rgba(255,209,102,0.4)";
+    // control dot in the zone below field
+    const dotX = s.p1.x + PAD_W / 2;
+    const dotY = FIELD_H + 30;
+    ctx.strokeStyle = "rgba(255,209,102,0.3)";
     ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
     ctx.beginPath();
-    ctx.moveTo(s.p1.x + PAD_W / 2, s.p1.y + PAD_H);
-    ctx.lineTo(s.p1.x + PAD_W / 2, s.p1.y + PAD_H + DOT_OFFSET);
+    ctx.moveTo(dotX, s.p1.y + PAD_H);
+    ctx.lineTo(dotX, dotY);
     ctx.stroke();
+    ctx.setLineDash([]);
     ctx.fillStyle = "#ffd166";
     ctx.beginPath();
-    ctx.arc(s.p1.x + PAD_W / 2, s.p1.y + PAD_H + DOT_OFFSET, DOT_R, 0, Math.PI * 2);
+    ctx.arc(dotX, dotY, DOT_R, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = "#00897b";
@@ -290,11 +305,17 @@ export default function Tennis() {
       return;
     }
 
-    if (b.y >= FIELD_MID_Y - 2 && b.y <= FIELD_MID_Y + 2) {
-      if (b.x >= FIELD_LEFT && b.x <= FIELD_RIGHT) {
-        b.vy *= -0.3;
-        b.vx *= 0.8;
-        b.y = b.vy > 0 ? FIELD_MID_Y + 4 : FIELD_MID_Y - 4;
+    // net collision - ball can hit the net
+    if (
+      ((b.vy > 0 && b.y + BALL_R >= FIELD_MID_Y - 3 && b.y <= FIELD_MID_Y) ||
+       (b.vy < 0 && b.y - BALL_R <= FIELD_MID_Y + 3 && b.y >= FIELD_MID_Y)) &&
+      b.x >= FIELD_LEFT && b.x <= FIELD_RIGHT
+    ) {
+      const netChance = Math.abs(b.vx) / (Math.abs(b.vx) + Math.abs(b.vy));
+      if (netChance < 0.3 || Math.abs(b.vy) < 2) {
+        b.vy *= -0.4;
+        b.vx *= 0.7;
+        b.y = b.vy > 0 ? FIELD_MID_Y + 5 : FIELD_MID_Y - 5;
       }
     }
 
@@ -409,7 +430,10 @@ export default function Tennis() {
     if (!s) return;
     s.p1.x = Math.max(FIELD_LEFT, Math.min(FIELD_RIGHT - PAD_W, canvasX - PAD_W / 2));
     if (canvasY !== undefined) {
-      s.p1.y = Math.max(P1_MIN_Y, Math.min(P1_BASE_Y, canvasY - PAD_H - DOT_OFFSET));
+      const zoneTop = FIELD_H + 10;
+      const zoneBot = CANVAS_H - 10;
+      const t = Math.max(0, Math.min(1, (canvasY - zoneTop) / (zoneBot - zoneTop)));
+      s.p1.y = P1_BASE_Y - t * (P1_BASE_Y - P1_MIN_Y);
     }
   }
 
@@ -417,17 +441,17 @@ export default function Tennis() {
     const s = stateRef.current;
     if (!s) return false;
     const dotX = s.p1.x + PAD_W / 2;
-    const dotY = s.p1.y + PAD_H + DOT_OFFSET;
+    const dotY = FIELD_H + 30;
     const dx = pos.x - dotX;
     const dy = pos.y - dotY;
-    return Math.sqrt(dx * dx + dy * dy) <= DOT_R + 15;
+    return Math.sqrt(dx * dx + dy * dy) <= DOT_R + 20;
   }
 
   function onTouchStart(e) {
     e.preventDefault();
     if (overRef.current || pausedRef.current) return;
     const pos = getCanvasPos(e.touches[0]);
-    if (hitDot(pos)) {
+    if (pos.y >= FIELD_H) {
       dotDragging.current = true;
       moveP1To(pos.x, pos.y);
     }
@@ -448,7 +472,7 @@ export default function Tennis() {
   function onMouseDown(e) {
     if (overRef.current || pausedRef.current) return;
     const pos = getCanvasPos(e);
-    if (hitDot(pos)) {
+    if (pos.y >= FIELD_H) {
       dotDragging.current = true;
       moveP1To(pos.x, pos.y);
     }
